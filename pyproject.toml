@@ -15,6 +15,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["use easy win32com"]
+dependencies = [
+  "",
+]
 
 [project.urls]
 Homepage = "https://github.com/calm51/useasywin32com"
