@@ -330,7 +330,7 @@ class Selection:
 
     # 获取选择的范围
     def range(self):
-        return Range(self.document, self.object.Range, self)
+        return Range(self.document, self.object.Range,)
 
     # 选择的开始与结束位置
     @property
