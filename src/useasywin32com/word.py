@@ -3,7 +3,11 @@ import os
 import ctypes
 import win32com
 import win32com.client
+from win32com.client import constants
 import pythoncom
+import ctypes
+from win32com.client import Dispatch, constants
+import win32com
 import win32timezone
 import win32clipboard
 from win32com.client import constants
@@ -70,6 +74,32 @@ class WdReplace(enum.IntEnum):
     wdReplaceOne = 1  # 替换遇到的第一个匹配项
 
 
+class WdViewType(enum.IntEnum):
+    wdConflictView = 8
+    wdMasterView = 5  # 主控视图。
+    wdNormalView = 1  # 普通视图。
+    wdOutlineView = 2  # 大纲视图。
+    wdPrintPreview = 4  # 打印预览视图。
+    wdPrintView = 3  # 页面视图。
+    wdReadingView = 7  # 阅读视图。
+    wdWebView = 6  # Web 视图。
+
+
+class WdOutlineLevel(enum.IntEnum):
+    wdOutlineLevel1 = 1  # 大纲级别 1。
+    wdOutlineLevel2 = 2  # 大纲级别 2。
+    wdOutlineLevel3 = 3  # 大纲级别 3。
+    wdOutlineLevel4 = 4  # 大纲级别 4。
+    wdOutlineLevel5 = 5  # 大纲级别 5。
+    wdOutlineLevel6 = 6  # 大纲级别 6。
+    wdOutlineLevel7 = 7  # 大纲级别 7。
+    wdOutlineLevel8 = 8  # 大纲级别 8。
+    wdOutlineLevel9 = 9  # 大纲级别 9。
+    wdOutlineLevelBodyText = 10  # 没有大纲级别。
+
+
+pass
+
 '''
 https://learn.microsoft.com/zh-cn/office/vba/api/overview/word/object-model
 https://learn.microsoft.com/zh-cn/office/vba/api/word.selection.pasteandformat
@@ -77,7 +107,37 @@ https://learn.microsoft.com/zh-cn/office/vba/api/word.wdpasteoptions
 https://learn.microsoft.com/zh-cn/office/vba/api/word.wdrecoverytype
 https://learn.microsoft.com/zh-cn/office/vba/api/word.find.execute
 
+https://learn.microsoft.com/zh-cn/office/vba/api/word.window.view
+https://learn.microsoft.com/zh-cn/office/vba/api/word.view
 '''
+
+
+# 单个窗口的视图对象
+class View:
+    def __init__(self, window, object):
+        self.window = window
+        self.object = object
+
+    # 视图类型
+    @property
+    def type(self) -> WdViewType:
+        return self.object.Type
+
+    @type.setter
+    def type(self, view_type: WdViewType = WdViewType.wdNormalView):
+        self.object.Type = view_type
+
+
+# 窗口对象
+class Window:
+    def __init__(self, application, object):
+        self.application = application
+        self.object = object
+
+    # 当前窗口的View对象
+    @property
+    def view(self):
+        return View(self, self.object.View)
 
 
 # 字体对象
@@ -232,6 +292,15 @@ class Paragraph:
     def format(self) -> ParagraphFormat:
         return ParagraphFormat(self, self.object.Format)
 
+    # 大纲等级
+    @property
+    def outline_level(self) -> WdOutlineLevel:
+        return self.object.OutlineLevel
+
+    @outline_level.setter
+    def outline_level(self, l: WdOutlineLevel):
+        self.object.OutlineLevel = l
+
 
 # 选择对象
 class Selection:
@@ -261,7 +330,7 @@ class Selection:
 
     # 获取选择的范围
     def range(self):
-        return Range(self.document, self.object.Range, )
+        return Range(self.document, self.object.Range, self)
 
     # 选择的开始与结束位置
     @property
@@ -383,6 +452,13 @@ class Document:
     def activate(self):
         self.object.Activate()
 
+    # 文档的窗口对象
+    @property
+    def window(self):
+        object = self.object.ActiveWindow
+        window = Window(self.application, object)
+        return window
+
     # 添加一个段落
     def add_paragraph(self):
         pass
@@ -421,12 +497,16 @@ class Document:
 
 
 class WordApplication:
-    def __init__(self, Visible=True, DisplayAlerts=True, **kwargs):
+    def __init__(self, Visible=True, DisplayAlerts=True,
+                 AllowReadingMode=False, OpenAttachmentsInFullScreen=False,
+                 **kwargs):
         self.documents = []
 
         self.a = win32com.client.gencache.EnsureDispatch('Word.Application')
-        self.a.Visible = Visible
-        self.a.DisplayAlerts = DisplayAlerts
+        self.a.Visible = Visible  # 界面是否可见
+        self.a.DisplayAlerts = DisplayAlerts  # 显示警告
+        self.a.Options.AllowReadingMode = AllowReadingMode  # 以阅读模式打开文档
+        self.a.OpenAttachmentsInFullScreen = OpenAttachmentsInFullScreen  # 在阅读模式打开打开电子邮件附件及不可编辑文件
         for k, v in kwargs.items():
             self.a.__setattr__(k, v)
 
@@ -449,6 +529,30 @@ class WordApplication:
     # 选择对象，光标
     def selection(self, document=None):
         if document is None:
-            document = self.a.ActiveDocument
+            document = self.active_document
         document.activate()
         return Selection(self, document, self.a.Selection)
+
+    # 当前激活的文档，没有文档打开时返回None
+    @property
+    def active_document(self) -> Document:
+        try:
+            object = self.a.ActiveDocument  # 此对象可能不在self.documents里
+        except:
+            return None
+        for i in self.documents:
+            if i.object == object:
+                return i
+        document = Document(self, "", object)
+        # self.documents.append(document)
+        return document
+
+    # 当前激活的窗口，没有文档打开时返回None
+    @property
+    def active_window(self) -> Window:
+        try:
+            object = self.a.ActiveWindow
+        except:
+            return None
+        window = Window(self, object)
+        return window
